@@ -1,1 +1,215 @@
-1eoOq8hXitcAp-TR-WLeVDVMxRlyBWCYzYCkOGxrxkj_wIE2Z9JbhCTRl9eL8U2cPzAk6ipnBsUQuu7RGenbAGEbVzqJAxvExCMrLStDVgSITvMHl6v-9_fqtE3af9M8ywYEBo6FZ-z7yohdFqmKl9RakjFn0yQzqrzd_MVaw41QAGfLTuLmFyyESOxoE2Ecy5RPtzZY-WHuIzvazQK53XU_3ryQcANeSzbPCXp1Ulen42AVBeF_R7lr7-lpVQkdJm0TCihW9--c1m7TKoSarcxccT5rPyxx4TsDZ0aF7SXlIFiRtnoDoKk8NTEPPgNjGCgS-OWlOmcHo-93FhbdE0p4PBDTSms-EfnClQrW4ftkfJ1mhCe-d8eeiQmkXWxwu3VaVVwaV7QYf3WwO7_RE5tRlpf8EarL-9MHuW_ij9fu4i8WQGZsL4uqA8KbGnxP0aqq2MN3ofU_23IgPThzJ-yXJE9e1IKsb8QbYjYAt46aOJN6VSqPfW_oCRl0PUhmxUI1cPerbBdeREj6VPnswxbu45rpWc3-hjDL0Vma-fbM_rq4W8epcbfJSIizvwIBHUSe8BU_ZHJHOrZVtyttFihV5JLIRfovo8OG5VZVYsiIwYuuL5zOzTb_ly-i_Zo59Br4yc-DEX_NmEJkwFEBUsjLcm2QbO31I_xiacwfaF4FngmnuQtDRv4_atMaWzXS_haRmhDWPygEKAvEig4s0QrnBUONwYmpuV-T_JKDzwmH1biWX90DAfM5LFO0HWF4NyKDUZMs89rN9VMGmvPv9kFBR1YTOUGJRVjhpRG06Touen9WDf0W_pznM8azA8MkogR_P-YtDTW0qgD_ivSbvNr8vEY9DCe-OThZwHgXys4empPsEaeCH68WIR8lBgII-F4hhhkPpVKf1lKm2ykaWU3tH8s0FuH31SS6_kmods-VhzBYr2HFQ39L-fY55qqXgMXx1lk44nLirsi3Gf4uJQ26ItaeRG5HoVoebjzrZVs2YzeeYBY9ul1fUXV4N5m4SYWih329YeryJ6Lp-bAi2HHeCrHdkKbzTOBkLtfKOctDt7X2_u5ogEIu25xpHP4hR-4RLgMIubLRNRiPXM7se41go5Gu-gXPX4LCkNpSDXwZ9aHqHIGYRd3HBoI4AmoAb18aXV81ffAbMHObJi7q74pBOtTYrYbkpJIQNaP6gpt8mHKwDDJtUAzWuoLq6bcRhgPbRjQH39z6AeWDNFzLlEmFood9vWHq8iei6fmwIthMYOzjVklSEaAehsgk-2uqnQe5x9-2o9RpFMOPoXMzalQRsSA7Ez8Ds6QopMuvSa7g4khQeRg5xEfg-hMWeRS1WM2EMDdstHSxBRlabxOgLsKFXjYLkpFJ7jxXmvH1IlA5s0yV5cIX-gzwWyeWApAIoeGV26wnSS8C2rbadbw5VJ5OzLTxB-aRkEXf0xAwof8
+
+
+-- Armazena últimas mensagens e rankings
+local lastRankingMessage = ""
+local lastRankingType = ""
+
+local rankingLists = {
+    level = {}, ["magic level"] = {}, fist = {}, distance = {},
+    sword = {}, axe = {}, club = {}, shield = {}, ["elo ranking"] = {},
+    vocacao = {}
+}
+
+function string:trim()
+    return self:match("^%s*(.-)%s*$") or ""
+end
+
+function selectRankingCategory(rankingKey)
+    local window = g_ui.getRootWidget():recursiveGetChildById("rankingsWindow")
+    if not window then return false end
+
+    local tabBar = window:recursiveGetChildById("rankingTabBar")
+    if not tabBar then return false end
+
+    local tabNameMap = {
+        ["magic level"] = "magic level",
+        ["level"] = "level",
+        ["fist"] = "fist",
+        ["distance"] = "distance",
+        ["sword"] = "sword",
+        ["axe"] = "axe",
+        ["club"] = "club",
+        ["shield"] = "shield",
+        ["elo ranking"] = "Elo Ranking",
+        ["vocacao"] = "level"
+    }
+
+    local targetTabName = tabNameMap[rankingKey]
+    if not targetTabName then return false end
+
+    for i = 0, tabBar:getChildCount() - 1 do
+        local tab = tabBar:getChildByIndex(i)
+        if tab and tab:getText():lower() == targetTabName:lower() then
+            tab:onClick()
+            return true
+        end
+    end
+    return false
+end
+
+function updateRankingFromUI(rankingKey)
+    if not rankingKey then return end
+    selectRankingCategory(rankingKey)
+
+    schedule(300, function()
+        local window = g_ui.getRootWidget():recursiveGetChildById("rankingsWindow")
+        if not window then return end
+
+        local scroll = window:recursiveGetChildById("rankingScroll")
+        if not scroll then return end
+
+        local novaLista = {}
+        for i = 0, math.min(10, scroll:getChildCount() - 1) do
+            local item = scroll:getChildByIndex(i)
+            if item then
+                local name = ""
+
+                if rankingKey == "vocacao" then
+                    local outfitBox = item:recursiveGetChildById("outfitBox")
+                    if outfitBox and outfitBox.getTooltip and type(outfitBox.getTooltip) == "function" then
+                        local tip = outfitBox:getTooltip()
+                        if tip then
+                            local found = tip:match("Vocação:%s*(.-)%s*$")
+                            if found then
+                                name = found:trim()
+                            end
+                        end
+                    end
+                else
+                    local nameLabel = item:getChildById("nameLabel")
+                    if nameLabel and nameLabel.getText then
+                        name = nameLabel:getText():trim()
+                    end
+                end
+
+                table.insert(novaLista, name ~= "" and name or "?")
+            end
+        end
+
+        while #novaLista < 10 do
+            table.insert(novaLista, "")
+        end
+
+        rankingLists[rankingKey] = novaLista
+        storage[rankingKey:gsub(" ", "")] = novaLista
+
+        print("[Ranking] " .. rankingKey .. " atualizado:")
+        for i, v in ipairs(novaLista) do
+            print(i .. ". " .. v)
+        end
+    end)
+end
+
+function parseRankingChallenge(text)
+    local position = tonumber(text:match("#(%d+)") or text:match("em (%d+)") or text:match("(%d+)º lugar") or text:match("(%d+) lugar"))
+    local lower = text:lower()
+
+    local rankingType = nil
+    if lower:find("vocacao") then rankingType = "vocacao"
+    elseif lower:find("magic level") then rankingType = "magic level"
+    elseif lower:find("fist") then rankingType = "fist"
+    elseif lower:find("distance") then rankingType = "distance"
+    elseif lower:find("sword") then rankingType = "sword"
+    elseif lower:find("axe") then rankingType = "axe"
+    elseif lower:find("club") then rankingType = "club"
+    elseif lower:find("shield") then rankingType = "shield"
+    elseif lower:find("elo") then rankingType = "elo ranking"
+    elseif lower:find("level") then rankingType = "level" end
+
+    return position, rankingType
+end
+
+function getRankingAnswer(position, rankingType)
+    local list = storage[rankingType and rankingType:gsub(" ", "")] or {}
+    if list and position and list[position] then
+        return list[position]
+    end
+    return nil
+end
+
+onTextMessage(function(mode, text)
+    if text:find("%[Desafio de Ranking%]") and text:find("!resposta") then
+        lastRankingMessage = text
+        local pos, tipo = parseRankingChallenge(text)
+        lastRankingType = tipo
+
+        updateRankingFromUI(tipo)
+        schedule(500, function()
+            local resposta = getRankingAnswer(pos, tipo)
+            if resposta and resposta ~= "" then
+                say("!resposta " .. resposta)
+                print("[Ranking] Respondendo -> " .. resposta)
+                lastRankingMessage = ""
+            else
+                warn("[Ranking] Ranking não encontrado: " .. (tipo or "nil") .. ", posição: " .. (pos or "nil"))
+            end
+        end)
+    end
+
+    if text:find("Resposta correta! Você foi teleportado") then
+        if lastRankingType and lastRankingType ~= "" then
+            print("[Ranking] Salvando automaticamente " .. lastRankingType .. " após acerto.")
+            updateRankingFromUI(lastRankingType)
+        end
+    end
+end)
+
+macro(1000, function()
+    if lastRankingMessage ~= "" then
+        local pos, tipo = parseRankingChallenge(lastRankingMessage)
+        lastRankingType = tipo
+
+        updateRankingFromUI(tipo)
+        schedule(500, function()
+            local resposta = getRankingAnswer(pos, tipo)
+            if resposta and resposta ~= "" then
+                say("!resposta " .. resposta)
+                print("[Ranking] Respondendo Backup -> " .. resposta)
+                lastRankingMessage = ""
+            end
+        end)
+    end
+end)
+
+-- Botão de atualizar ranking atual via ComboBox
+UI.Button("Atualizar Ranking Atual", function()
+    local window = g_ui.getRootWidget():recursiveGetChildById("rankingsWindow")
+    if not window then warn("[BOT] rankingsWindow não encontrado.") return end
+
+    local combo = window:recursiveGetChildById("skillComboBox")
+    if not combo then warn("[BOT] skillComboBox não encontrado.") return end
+
+    local selectedText = combo:getText() or ""
+    if selectedText == "" then
+        warn("[BOT] [Ranking] Opção inválida no ComboBox.")
+        return
+    end
+
+    local normalized = selectedText:lower():gsub("%s+", "")
+    local map = {
+        ["level"] = "level",
+        ["magiclevel"] = "magic level",
+        ["fist"] = "fist",
+        ["distance"] = "distance",
+        ["sword"] = "sword",
+        ["axe"] = "axe",
+        ["club"] = "club",
+        ["shield"] = "shield",
+        ["eloranking"] = "elo ranking",
+        ["lastdeaths"] = nil
+    }
+
+    local rankingKey = map[normalized]
+    if rankingKey then
+        updateRankingFromUI(rankingKey)
+        print("[BOT] Ranking atualizado: " .. rankingKey)
+    else
+        warn("[BOT] Ranking '" .. selectedText .. "' não é compatível para atualização.")
+    end
+end)
+
+-- Botão específico para vocação (lê tooltip)
+UI.Button("Atualizar Vocação", function()
+    updateRankingFromUI("vocacao")
+    print("[BOT] Ranking de vocação atualizado via outfitBox.")
+end)
