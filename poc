@@ -84,10 +84,20 @@ function readVocationFromOutfit(item, callback)
                 if outfitBox.getTooltip and type(outfitBox.getTooltip) == "function" then
                     local tip = outfitBox:getTooltip()
                     if tip and tip ~= "" then
-                        local found = tip:match("Vocação:%s*(.-)%s*$") or tip:match("Vocation:%s*(.-)%s*$")
+                        -- Debug: mostrar o tooltip completo
+                        print("[DEBUG] Tooltip completo: " .. tip:gsub("\n", "\\n"))
+                        
+                        -- Regex melhorado para capturar através de quebras de linha
+                        local found = tip:match("Vocação:%s*([^\r\n]+)") or 
+                                     tip:match("Vocation:%s*([^\r\n]+)")
+                        
                         if found then
-                            callback(found:trim())
+                            local vocation = found:trim()
+                            print("[DEBUG] Vocação encontrada: " .. vocation)
+                            callback(vocation)
                             return
+                        else
+                            print("[DEBUG] Padrão não encontrado no tooltip")
                         end
                     end
                 end
@@ -96,6 +106,7 @@ function readVocationFromOutfit(item, callback)
                 if attempts < maxAttempts then
                     schedule(100, tryReadVocation)
                 else
+                    print("[DEBUG] Máximo de tentativas atingido para item")
                     callback("?") -- Retorna ? se não conseguiu ler
                 end
             end)
