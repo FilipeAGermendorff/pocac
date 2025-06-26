@@ -1,275 +1,352 @@
--- AGUARDAR INICIALIZAÇÃO COMPLETA DO BOT
-local function waitForBotReady(callback, attempts)
-    attempts = attempts or 0
-    if attempts > 30 then  -- 30 segundos máximo
-        warn("[Ranking] Bot não inicializou completamente")
-        return
-    end
-    
-    -- Verificar se funções essenciais estão disponíveis
-    if g_ui and g_ui.getRootWidget and onTextMessage and macro and UI and storage then
-        local rootWidget = g_ui.getRootWidget()
-        if rootWidget then
-            print("[Ranking] Bot inicializado, carregando script...")
-            callback()
-            return
-        end
-    end
-    
-    -- Tentar novamente após 1 segundo
-    schedule(1000, function()
-        waitForBotReady(callback, attempts + 1)
-    end)
+-- Armazena últimas mensagens e rankings
+local lastRankingMessage = ""
+local lastRankingType = ""
+
+local rankingLists = {
+    level = {}, ["magic level"] = {}, fist = {}, distance = {},
+    sword = {}, axe = {}, club = {}, shield = {}, ["elo ranking"] = {},
+    vocacao = {}
+}
+
+function string:trim()
+    return self:match("^%s*(.-)%s*$") or ""
 end
 
--- SCRIPT PRINCIPAL (só executa quando bot estiver pronto)
-local function initRankingScript()
-    -- Seu script original aqui, mas com algumas melhorias
-    
-    -- Armazena últimas mensagens e rankings
-    local lastRankingMessage = ""
-    local lastRankingType = ""
+function selectRankingCategory(rankingKey)
+    local window = g_ui.getRootWidget():recursiveGetChildById("rankingsWindow")
+    if not window then return false end
 
-    local rankingLists = {
-        level = {}, ["magic level"] = {}, fist = {}, distance = {},
-        sword = {}, axe = {}, club = {}, shield = {}, ["elo ranking"] = {},
-        vocacao = {}
+    local tabBar = window:recursiveGetChildById("rankingTabBar")
+    if not tabBar then return false end
+
+    local tabNameMap = {
+        ["magic level"] = "magic level",
+        ["level"] = "level",
+        ["fist"] = "fist",
+        ["distance"] = "distance",
+        ["sword"] = "sword",
+        ["axe"] = "axe",
+        ["club"] = "club",
+        ["shield"] = "shield",
+        ["elo ranking"] = "Elo Ranking",
+        ["vocacao"] = "level" -- Para vocação, ainda usa a aba level
     }
 
-    function string:trim()
-        return self:match("^%s*(.-)%s*$") or ""
+    local targetTabName = tabNameMap[rankingKey]
+    if not targetTabName then return false end
+
+    for i = 0, tabBar:getChildCount() - 1 do
+        local tab = tabBar:getChildByIndex(i)
+        if tab and tab:getText():lower() == targetTabName:lower() then
+            tab:onClick()
+            return true
+        end
     end
-
-    -- Função para aguardar UI específica estar pronta
-    local function waitForRankingUI(callback, attempts)
-        attempts = attempts or 0
-        if attempts > 20 then
-            warn("[Ranking] Ranking UI não carregou")
-            return
-        end
-        
-        local window = g_ui.getRootWidget():recursiveGetChildById("rankingsWindow")
-        if window then
-            local scroll = window:recursiveGetChildById("rankingScroll")
-            if scroll then
-                callback(window, scroll)
-                return
-            end
-        end
-        
-        schedule(300, function()
-            waitForRankingUI(callback, attempts + 1)
-        end)
-    end
-
-    function selectRankingCategory(rankingKey)
-        local window = g_ui.getRootWidget():recursiveGetChildById("rankingsWindow")
-        if not window then return false end
-
-        local tabBar = window:recursiveGetChildById("rankingTabBar")
-        if not tabBar then return false end
-
-        local tabNameMap = {
-            ["magic level"] = "magic level",
-            ["level"] = "level",
-            ["fist"] = "fist",
-            ["distance"] = "distance",
-            ["sword"] = "sword",
-            ["axe"] = "axe",
-            ["club"] = "club",
-            ["shield"] = "shield",
-            ["elo ranking"] = "Elo Ranking",
-            ["vocacao"] = "level"
-        }
-
-        local targetTabName = tabNameMap[rankingKey]
-        if not targetTabName then return false end
-
-        for i = 0, tabBar:getChildCount() - 1 do
-            local tab = tabBar:getChildByIndex(i)
-            if tab and tab:getText():lower() == targetTabName:lower() then
-                tab:onClick()
-                return true
-            end
-        end
-        return false
-    end
-
-    function updateRankingFromUI(rankingKey)
-        if not rankingKey then return end
-        
-        -- Primeiro verificar se ranking window está aberta
-        local window = g_ui.getRootWidget():recursiveGetChildById("rankingsWindow")
-        if not window then
-            warn("[Ranking] Abra a janela de ranking primeiro!")
-            return
-        end
-        
-        selectRankingCategory(rankingKey)
-
-        -- Aguardar UI estar pronta antes de extrair dados
-        waitForRankingUI(function(window, scroll)
-            local novaLista = {}
-            
-            -- Aguardar um pouco mais para garantir que a UI atualizou
-            schedule(500, function()
-                for i = 0, math.min(10, scroll:getChildCount() - 1) do
-                    local item = scroll:getChildByIndex(i)
-                    if item then
-                        local name = ""
-
-                        if rankingKey == "vocacao" then
-                            local outfitBox = item:recursiveGetChildById("outfitBox")
-                            if outfitBox and outfitBox.getTooltip and type(outfitBox.getTooltip) == "function" then
-                                local tip = outfitBox:getTooltip()
-                                if tip then
-                                    local found = tip:match("Vocação:%s*(.-)%s*$")
-                                    if found then
-                                        name = found:trim()
-                                    end
-                                end
-                            end
-                        else
-                            local nameLabel = item:getChildById("nameLabel")
-                            if nameLabel and nameLabel.getText then
-                                name = nameLabel:getText():trim()
-                            end
-                        end
-
-                        table.insert(novaLista, name ~= "" and name or "?")
-                    end
-                end
-
-                while #novaLista < 10 do
-                    table.insert(novaLista, "")
-                end
-
-                rankingLists[rankingKey] = novaLista
-                storage[rankingKey:gsub(" ", "")] = novaLista
-
-                print("[Ranking] " .. rankingKey .. " atualizado:")
-                for i, v in ipairs(novaLista) do
-                    print(i .. ". " .. v)
-                end
-            end)
-        end)
-    end
-
-    function parseRankingChallenge(text)
-        local position = tonumber(text:match("#(%d+)") or text:match("em (%d+)") or text:match("(%d+)º lugar") or text:match("(%d+) lugar"))
-        local lower = text:lower()
-
-        local rankingType = nil
-        if lower:find("vocacao") then rankingType = "vocacao"
-        elseif lower:find("magic level") then rankingType = "magic level"
-        elseif lower:find("fist") then rankingType = "fist"
-        elseif lower:find("distance") then rankingType = "distance"
-        elseif lower:find("sword") then rankingType = "sword"
-        elseif lower:find("axe") then rankingType = "axe"
-        elseif lower:find("club") then rankingType = "club"
-        elseif lower:find("shield") then rankingType = "shield"
-        elseif lower:find("elo") then rankingType = "elo ranking"
-        elseif lower:find("level") then rankingType = "level" end
-
-        return position, rankingType
-    end
-
-    function getRankingAnswer(position, rankingType)
-        local list = storage[rankingType and rankingType:gsub(" ", "")] or {}
-        if list and position and list[position] then
-            return list[position]
-        end
-        return nil
-    end
-
-    onTextMessage(function(mode, text)
-        if text:find("%[Desafio de Ranking%]") and text:find("!resposta") then
-            lastRankingMessage = text
-            local pos, tipo = parseRankingChallenge(text)
-            lastRankingType = tipo
-
-            updateRankingFromUI(tipo)
-            schedule(1000, function() -- Delay maior para injeção externa
-                local resposta = getRankingAnswer(pos, tipo)
-                if resposta and resposta ~= "" then
-                    say("!resposta " .. resposta)
-                    print("[Ranking] Respondendo -> " .. resposta)
-                    lastRankingMessage = ""
-                else
-                    warn("[Ranking] Ranking não encontrado: " .. (tipo or "nil") .. ", posição: " .. (pos or "nil"))
-                end
-            end)
-        end
-
-        if text:find("Resposta correta! Você foi teleportado") then
-            if lastRankingType and lastRankingType ~= "" then
-                print("[Ranking] Salvando automaticamente " .. lastRankingType .. " após acerto.")
-                updateRankingFromUI(lastRankingType)
-            end
-        end
-    end)
-
-    macro(1000, function()
-        if lastRankingMessage ~= "" then
-            local pos, tipo = parseRankingChallenge(lastRankingMessage)
-            lastRankingType = tipo
-
-            updateRankingFromUI(tipo)
-            schedule(1000, function()
-                local resposta = getRankingAnswer(pos, tipo)
-                if resposta and resposta ~= "" then
-                    say("!resposta " .. resposta)
-                    print("[Ranking] Respondendo Backup -> " .. resposta)
-                    lastRankingMessage = ""
-                end
-            end)
-        end
-    end)
-
-    UI.Button("Atualizar Ranking Atual", function()
-        local window = g_ui.getRootWidget():recursiveGetChildById("rankingsWindow")
-        if not window then warn("[BOT] rankingsWindow não encontrado.") return end
-
-        local combo = window:recursiveGetChildById("skillComboBox")
-        if not combo then warn("[BOT] skillComboBox não encontrado.") return end
-
-        local selectedText = combo:getText() or ""
-        if selectedText == "" then
-            warn("[BOT] [Ranking] Opção inválida no ComboBox.")
-            return
-        end
-
-        local normalized = selectedText:lower():gsub("%s+", "")
-        local map = {
-            ["level"] = "level",
-            ["magiclevel"] = "magic level",
-            ["fist"] = "fist",
-            ["distance"] = "distance",
-            ["sword"] = "sword",
-            ["axe"] = "axe",
-            ["club"] = "club",
-            ["shield"] = "shield",
-            ["eloranking"] = "elo ranking",
-            ["lastdeaths"] = nil
-        }
-
-        local rankingKey = map[normalized]
-        if rankingKey then
-            updateRankingFromUI(rankingKey)
-            print("[BOT] Ranking atualizado: " .. rankingKey)
-        else
-            warn("[BOT] Ranking '" .. selectedText .. "' não é compatível para atualização.")
-        end
-    end)
-
-    UI.Button("Atualizar Vocação", function()
-        updateRankingFromUI("vocacao")
-        print("[BOT] Ranking de vocação atualizado via outfitBox.")
-    end)
-    
-    print("[Ranking] Script carregado com sucesso!")
+    return false
 end
 
--- INICIAR SCRIPT APENAS QUANDO BOT ESTIVER PRONTO
-print("[Ranking] Aguardando inicialização do bot...")
-waitForBotReady(initRankingScript)
+-- Função melhorada para aguardar carregamento da UI
+function waitForUIElement(parentWidget, elementId, maxAttempts, callback)
+    maxAttempts = maxAttempts or 20
+    local attempts = 0
+    
+    local function checkElement()
+        attempts = attempts + 1
+        local element = parentWidget:recursiveGetChildById(elementId)
+        
+        if element then
+            callback(element)
+            return true
+        elseif attempts < maxAttempts then
+            schedule(100, checkElement)
+            return false
+        else
+            warn("[Ranking] Elemento " .. elementId .. " não encontrado após " .. maxAttempts .. " tentativas")
+            return false
+        end
+    end
+    
+    checkElement()
+end
+
+-- Função específica para ler vocação com mais tentativas
+function readVocationFromOutfit(item, callback)
+    local attempts = 0
+    local maxAttempts = 10
+    
+    local function tryReadVocation()
+        attempts = attempts + 1
+        local outfitBox = item:recursiveGetChildById("outfitBox")
+        
+        if outfitBox then
+            -- Aguarda um pouco para garantir que o tooltip está disponível
+            schedule(50, function()
+                if outfitBox.getTooltip and type(outfitBox.getTooltip) == "function" then
+                    local tip = outfitBox:getTooltip()
+                    if tip and tip ~= "" then
+                        local found = tip:match("Vocação:%s*(.-)%s*$") or tip:match("Vocation:%s*(.-)%s*$")
+                        if found then
+                            callback(found:trim())
+                            return
+                        end
+                    end
+                end
+                
+                -- Se não conseguiu ler, tenta novamente
+                if attempts < maxAttempts then
+                    schedule(100, tryReadVocation)
+                else
+                    callback("?") -- Retorna ? se não conseguiu ler
+                end
+            end)
+        else
+            -- Se não encontrou outfitBox, tenta novamente
+            if attempts < maxAttempts then
+                schedule(100, tryReadVocation)
+            else
+                callback("?")
+            end
+        end
+    end
+    
+    tryReadVocation()
+end
+
+function updateRankingFromUI(rankingKey)
+    if not rankingKey then return end
+    
+    print("[Ranking] Iniciando atualização: " .. rankingKey)
+    selectRankingCategory(rankingKey)
+
+    -- Aguarda mais tempo para vocação
+    local waitTime = rankingKey == "vocacao" and 500 or 300
+    
+    schedule(waitTime, function()
+        local window = g_ui.getRootWidget():recursiveGetChildById("rankingsWindow")
+        if not window then 
+            warn("[Ranking] Window não encontrada")
+            return 
+        end
+
+        waitForUIElement(window, "rankingScroll", 15, function(scroll)
+            print("[Ranking] Scroll encontrado, processando itens...")
+            
+            local novaLista = {}
+            local itemsToProcess = math.min(10, scroll:getChildCount())
+            local processedItems = 0
+            
+            if itemsToProcess == 0 then
+                warn("[Ranking] Nenhum item encontrado no scroll")
+                return
+            end
+            
+            local function processItem(index)
+                if index >= itemsToProcess then
+                    -- Todos os itens foram processados
+                    while #novaLista < 10 do
+                        table.insert(novaLista, "")
+                    end
+
+                    rankingLists[rankingKey] = novaLista
+                    storage[rankingKey:gsub(" ", "")] = novaLista
+
+                    print("[Ranking] " .. rankingKey .. " atualizado:")
+                    for i, v in ipairs(novaLista) do
+                        print(i .. ". " .. (v ~= "" and v or "vazio"))
+                    end
+                    return
+                end
+                
+                local item = scroll:getChildByIndex(index)
+                if not item then
+                    table.insert(novaLista, "")
+                    processItem(index + 1)
+                    return
+                end
+
+                if rankingKey == "vocacao" then
+                    readVocationFromOutfit(item, function(vocation)
+                        table.insert(novaLista, vocation)
+                        processItem(index + 1)
+                    end)
+                else
+                    local nameLabel = item:getChildById("nameLabel")
+                    local name = ""
+                    if nameLabel and nameLabel.getText then
+                        name = nameLabel:getText():trim()
+                    end
+                    table.insert(novaLista, name ~= "" and name or "?")
+                    processItem(index + 1)
+                end
+            end
+            
+            processItem(0)
+        end)
+    end)
+end
+
+function parseRankingChallenge(text)
+    local position = tonumber(text:match("#(%d+)") or text:match("em (%d+)") or text:match("(%d+)º lugar") or text:match("(%d+) lugar"))
+    local lower = text:lower()
+
+    local rankingType = nil
+    if lower:find("vocacao") or lower:find("vocation") then 
+        rankingType = "vocacao"
+    elseif lower:find("magic level") then 
+        rankingType = "magic level"
+    elseif lower:find("fist") then 
+        rankingType = "fist"
+    elseif lower:find("distance") then 
+        rankingType = "distance"
+    elseif lower:find("sword") then 
+        rankingType = "sword"
+    elseif lower:find("axe") then 
+        rankingType = "axe"
+    elseif lower:find("club") then 
+        rankingType = "club"
+    elseif lower:find("shield") then 
+        rankingType = "shield"
+    elseif lower:find("elo") then 
+        rankingType = "elo ranking"
+    elseif lower:find("level") then 
+        rankingType = "level" 
+    end
+
+    return position, rankingType
+end
+
+function getRankingAnswer(position, rankingType)
+    local list = storage[rankingType and rankingType:gsub(" ", "")] or {}
+    if list and position and list[position] then
+        return list[position]
+    end
+    return nil
+end
+
+onTextMessage(function(mode, text)
+    if text:find("%[Desafio de Ranking%]") and text:find("!resposta") then
+        lastRankingMessage = text
+        local pos, tipo = parseRankingChallenge(text)
+        lastRankingType = tipo
+
+        print("[Ranking] Desafio detectado: " .. (tipo or "nil") .. ", posição: " .. (pos or "nil"))
+        
+        updateRankingFromUI(tipo)
+        
+        -- Aguarda mais tempo para vocação
+        local responseTime = tipo == "vocacao" and 1000 or 500
+        
+        schedule(responseTime, function()
+            local resposta = getRankingAnswer(pos, tipo)
+            if resposta and resposta ~= "" and resposta ~= "?" then
+                say("!resposta " .. resposta)
+                print("[Ranking] Respondendo -> " .. resposta)
+                lastRankingMessage = ""
+            else
+                warn("[Ranking] Ranking não encontrado: " .. (tipo or "nil") .. ", posição: " .. (pos or "nil"))
+            end
+        end)
+    end
+
+    if text:find("Resposta correta! Você foi teleportado") then
+        if lastRankingType and lastRankingType ~= "" then
+            print("[Ranking] Salvando automaticamente " .. lastRankingType .. " após acerto.")
+            updateRankingFromUI(lastRankingType)
+        end
+    end
+end)
+
+macro(1000, function()
+    if lastRankingMessage ~= "" then
+        local pos, tipo = parseRankingChallenge(lastRankingMessage)
+        lastRankingType = tipo
+
+        updateRankingFromUI(tipo)
+        
+        -- Aguarda mais tempo para vocação
+        local responseTime = tipo == "vocacao" and 1000 or 500
+        
+        schedule(responseTime, function()
+            local resposta = getRankingAnswer(pos, tipo)
+            if resposta and resposta ~= "" and resposta ~= "?" then
+                say("!resposta " .. resposta)
+                print("[Ranking] Respondendo Backup -> " .. resposta)
+                lastRankingMessage = ""
+            end
+        end)
+    end
+end)
+
+-- Botão de atualizar ranking atual via ComboBox
+UI.Button("Atualizar Ranking Atual", function()
+    local window = g_ui.getRootWidget():recursiveGetChildById("rankingsWindow")
+    if not window then warn("[BOT] rankingsWindow não encontrado.") return end
+
+    local combo = window:recursiveGetChildById("skillComboBox")
+    if not combo then warn("[BOT] skillComboBox não encontrado.") return end
+
+    local selectedText = combo:getText() or ""
+    if selectedText == "" then
+        warn("[BOT] [Ranking] Opção inválida no ComboBox.")
+        return
+    end
+
+    local normalized = selectedText:lower():gsub("%s+", "")
+    local map = {
+        ["level"] = "level",
+        ["magiclevel"] = "magic level",
+        ["fist"] = "fist",
+        ["distance"] = "distance",
+        ["sword"] = "sword",
+        ["axe"] = "axe",
+        ["club"] = "club",
+        ["shield"] = "shield",
+        ["eloranking"] = "elo ranking",
+        ["lastdeaths"] = nil
+    }
+
+    local rankingKey = map[normalized]
+    if rankingKey then
+        updateRankingFromUI(rankingKey)
+        print("[BOT] Ranking atualizado: " .. rankingKey)
+    else
+        warn("[BOT] Ranking '" .. selectedText .. "' não é compatível para atualização.")
+    end
+end)
+
+-- Botão específico para vocação (lê tooltip)
+UI.Button("Atualizar Vocação", function()
+    print("[BOT] Iniciando atualização manual de vocação...")
+    updateRankingFromUI("vocacao")
+end)
+
+-- Função de debug para testar leitura de vocação
+UI.Button("Debug Vocação", function()
+    local window = g_ui.getRootWidget():recursiveGetChildById("rankingsWindow")
+    if not window then warn("[DEBUG] Window não encontrada") return end
+    
+    local scroll = window:recursiveGetChildById("rankingScroll")
+    if not scroll then warn("[DEBUG] Scroll não encontrado") return end
+    
+    print("[DEBUG] Testando leitura de vocação...")
+    print("[DEBUG] Itens no scroll: " .. scroll:getChildCount())
+    
+    for i = 0, math.min(3, scroll:getChildCount() - 1) do
+        local item = scroll:getChildByIndex(i)
+        if item then
+            print("[DEBUG] Item " .. i .. ":")
+            local outfitBox = item:recursiveGetChildById("outfitBox")
+            if outfitBox then
+                print("[DEBUG] OutfitBox encontrado")
+                if outfitBox.getTooltip then
+                    local tip = outfitBox:getTooltip()
+                    print("[DEBUG] Tooltip: " .. (tip or "nil"))
+                else
+                    print("[DEBUG] getTooltip não disponível")
+                end
+            else
+                print("[DEBUG] OutfitBox não encontrado")
+            end
+        end
+    end
+end)
