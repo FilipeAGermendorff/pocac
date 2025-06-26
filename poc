@@ -139,60 +139,62 @@ function updateRankingFromUI(rankingKey)
             return 
         end
 
-        waitForUIElement(window, "rankingScroll", 15, function(scroll)
-            print("[Ranking] Scroll encontrado, processando itens...")
-            
-            local novaLista = {}
-            local itemsToProcess = math.min(10, scroll:getChildCount())
-            local processedItems = 0
-            
-            if itemsToProcess == 0 then
-                warn("[Ranking] Nenhum item encontrado no scroll")
-                return
-            end
-            
-            local function processItem(index)
-                if index >= itemsToProcess then
-                    -- Todos os itens foram processados
-                    while #novaLista < 10 do
-                        table.insert(novaLista, "")
-                    end
+        local scroll = window:recursiveGetChildById("rankingScroll")
+        if not scroll then 
+            warn("[Ranking] Scroll não encontrado")
+            return 
+        end
 
-                    rankingLists[rankingKey] = novaLista
-                    storage[rankingKey:gsub(" ", "")] = novaLista
-
-                    print("[Ranking] " .. rankingKey .. " atualizado:")
-                    for i, v in ipairs(novaLista) do
-                        print(i .. ". " .. (v ~= "" and v or "vazio"))
-                    end
-                    return
-                end
-                
-                local item = scroll:getChildByIndex(index)
-                if not item then
-                    table.insert(novaLista, "")
-                    processItem(index + 1)
-                    return
-                end
+        print("[Ranking] Scroll encontrado, processando itens...")
+        
+        local novaLista = {}
+        
+        -- USA A MESMA LÓGICA DO DEBUG QUE FUNCIONA
+        for i = 0, math.min(10, scroll:getChildCount() - 1) do
+            local item = scroll:getChildByIndex(i)
+            if item then
+                local name = ""
 
                 if rankingKey == "vocacao" then
-                    readVocationFromOutfit(item, function(vocation)
-                        table.insert(novaLista, vocation)
-                        processItem(index + 1)
-                    end)
+                    -- COPIA EXATA DO DEBUG QUE FUNCIONA
+                    local outfitBox = item:recursiveGetChildById("outfitBox")
+                    if outfitBox then
+                        if outfitBox.getTooltip then
+                            local tip = outfitBox:getTooltip()
+                            if tip then
+                                -- Extrai a vocação da mesma forma que o debug
+                                local found = tip:match("Vocação:%s*([^\r\n]+)")
+                                if found then
+                                    name = found:trim()
+                                    print("[Ranking] Vocação " .. (i+1) .. ": " .. name)
+                                end
+                            end
+                        end
+                    end
                 else
                     local nameLabel = item:getChildById("nameLabel")
-                    local name = ""
                     if nameLabel and nameLabel.getText then
                         name = nameLabel:getText():trim()
                     end
-                    table.insert(novaLista, name ~= "" and name or "?")
-                    processItem(index + 1)
                 end
+
+                table.insert(novaLista, name ~= "" and name or "?")
+            else
+                table.insert(novaLista, "")
             end
-            
-            processItem(0)
-        end)
+        end
+
+        while #novaLista < 10 do
+            table.insert(novaLista, "")
+        end
+
+        rankingLists[rankingKey] = novaLista
+        storage[rankingKey:gsub(" ", "")] = novaLista
+
+        print("[Ranking] " .. rankingKey .. " atualizado:")
+        for i, v in ipairs(novaLista) do
+            print(i .. ". " .. (v ~= "" and v or "vazio"))
+        end
     end)
 end
 
