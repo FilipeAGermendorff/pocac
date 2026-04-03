@@ -1,1 +1,19 @@
-powershell.exe -WindowStyle Hidden -Command "$b=(Get-CimInstance Win32_BIOS).SerialNumber -replace '\s',''; $c=(Get-CimInstance Win32_Processor).ProcessorId -replace '\s',''; $m=(Get-CimInstance Win32_BaseBoard).SerialNumber -replace '\s',''; $d=(Get-CimInstance Win32_DiskDrive | Where-Object {$_.Index -eq 0}).SerialNumber -replace '[\s.]',''; $n=(Get-NetAdapter | Where-Object {$_.Status -eq 'Up'} | Select-Object -First 1).MacAddress; $h=($b,$c,$m,$d,$n) -join '-'; Set-Content -Path 'hwid.dat' -Value $h -NoNewline -Encoding ASCII"
+using System;
+using System.IO;
+using System.Management;
+using System.Net.NetworkInformation;
+namespace HWID { class Program { static void Main() {
+try {
+ string b = GetWMI("Win32_BIOS", "SerialNumber");
+ string c = GetWMI("Win32_Processor", "ProcessorId");
+ string m = GetWMI("Win32_BaseBoard", "SerialNumber");
+ string d = GetDisk();
+ string n = GetMac();
+ string hwid = b + "-" + c + "-" + m + "-" + d + "-" + n;
+ File.WriteAllText("hwid.dat", hwid);
+} catch {}
+}
+static string GetWMI(string cls, string prop) { try { var searcher = new ManagementObjectSearcher("select " + prop + " from " + cls); foreach (ManagementObject obj in searcher.Get()) { return obj[prop].ToString().Replace(" ", "").Replace(".", ""); } } catch {} return ""; }
+static string GetDisk() { try { var searcher = new ManagementObjectSearcher("select SerialNumber from Win32_DiskDrive where Index = 0"); foreach (ManagementObject obj in searcher.Get()) { return obj["SerialNumber"].ToString().Replace(" ", "").Replace(".", ""); } } catch {} return ""; }
+static string GetMac() { try { foreach (NetworkInterface nic in NetworkInterface.GetAllNetworkInterfaces()) { if (nic.OperationalStatus == OperationalStatus.Up && nic.NetworkInterfaceType != NetworkInterfaceType.Loopback) { string m = ""; foreach(byte by in nic.GetPhysicalAddress().GetAddressBytes()) m += by.ToString("X2"); return m; } } } catch {} return ""; }
+} }
